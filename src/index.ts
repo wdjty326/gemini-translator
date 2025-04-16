@@ -20,12 +20,16 @@ if (!fs.existsSync(translatePath)) {
   fs.mkdirSync(translatePath, { recursive: true });
 }
 
-const extractFiles = fs.readdirSync(extractPath);
+const translateFiles = fs.readdirSync(translatePath);
+const extractFiles = fs.readdirSync(extractPath).filter(file => !translateFiles.includes(file));
+
+const geminiDelayTime = Number(process.env.GEMINI_DELAY_TIME);     
+const geminiChunkSize = Number(process.env.GEMINI_CHUNK_SIZE);
+
 
 // 번역 함수 정의
 async function translateJapaneseToKorean(text: string) {
-  const prompt = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 최대한 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 번역만 해주세요.:\n\n${text}`;
-  
+  const prompt = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 번역만 해주세요. "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴을 유지해주세요:\n\n${text}`;
   const result = await model.generateContent({
     contents: [{
       role: "user",
@@ -35,7 +39,23 @@ async function translateJapaneseToKorean(text: string) {
     }],
     safetySettings: [
       {
+        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+      {
         category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+      {
+        category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
         threshold: HarmBlockThreshold.BLOCK_NONE,
       },
     ],
@@ -109,20 +129,18 @@ async function processFiles() {
       console.log(`${chunks.length}개의 청크로 분할되었습니다.`);
       
       let translatedContent = '';
-     
-      const GEMINI_CHUNK_SIZE = Number(process.env.GEMINI_CHUNK_SIZE);
-      const GEMINI_DELAY_TIME = Number(process.env.GEMINI_DELAY_TIME);
+
       // 3개의 청크씩 병렬 처리
-      for (let i = 0; i < chunks.length; i += GEMINI_CHUNK_SIZE) {
-        const currentChunks = chunks.slice(i, i + GEMINI_CHUNK_SIZE);
-        console.log(`청크 처리 중 (${i+1}-${Math.min(i+GEMINI_CHUNK_SIZE, chunks.length)}/${chunks.length})`);
+      for (let i = 0; i < chunks.length; i += geminiChunkSize) {
+        const currentChunks = chunks.slice(i, i + geminiChunkSize);
+        console.log(`청크 처리 중 (${Math.min(i+geminiChunkSize, chunks.length)}/${chunks.length})`);
         
         const translatedChunks = await Promise.all(
           currentChunks.map(chunk => translateJapaneseToKorean(chunk))
         );
         
         translatedContent += translatedChunks.join('');
-        await new Promise(resolve => setTimeout(resolve, GEMINI_DELAY_TIME));
+        await new Promise(resolve => setTimeout(resolve, geminiDelayTime));
       }
       
       // 번역된 내용 저장
