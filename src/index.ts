@@ -1,16 +1,16 @@
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const dotenv = require("dotenv");
-const fs = require("fs");
-const path = require("path");
+import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
+import dotenv from "dotenv";
+import fs from "fs";
+import path from "path";
 
 dotenv.config();
 
-const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
-const model = genAI.getGenerativeModel({ model: process.env.MODEL, });
+const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL as string });
 
-const extractPath = path.join(__dirname, '..', process.env.EXTRACT_PATH);
-const translatePath = path.join(__dirname, '..', process.env.TRANSLATE_PATH);
+const extractPath = path.join(__dirname, '..', process.env.EXTRACT_PATH as string);
+const translatePath = path.join(__dirname, '..', process.env.TRANSLATE_PATH as string);
 
 if (!fs.existsSync(extractPath)) {
   fs.mkdirSync(extractPath, { recursive: true });
@@ -21,26 +21,38 @@ if (!fs.existsSync(translatePath)) {
 }
 
 const extractFiles = fs.readdirSync(extractPath);
-const translateFiles = fs.readdirSync(translatePath);
 
 // 번역 함수 정의
 async function translateJapaneseToKorean(text: string) {
-  const prompt = `다음 일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 최대한 유지하면서 자연스러운 한국어로 번역해주세요:\n\n${text}`;
+  const prompt = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 최대한 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 번역만 해주세요.:\n\n${text}`;
   
-  const result = await model.generateContent(prompt);
+  const result = await model.generateContent({
+    contents: [{
+      role: "user",
+      parts: [{
+        text: prompt,
+      }],
+    }],
+    safetySettings: [
+      {
+        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+        threshold: HarmBlockThreshold.BLOCK_NONE,
+      },
+    ],
+  });
   const response = await result.response;
   return response.text();
 }
 
 // 텍스트 분할 함수 - 패턴 기반 분할
 function splitTextByPattern(text: string): string[] {
-  // "--- 101 ---" 또는 "--- 102 ---" 패턴으로 분할
-  const pattern = /---(?: \d+ ---)/g;
+  // "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴으로 분할
+  const pattern = /(?:---(?: \d+ ---)|-----)/g;
   const matches = [...text.matchAll(pattern)];
   const chunks: string[] = [];
   
   // 청크 크기 제한 (대략적인 크기)
-  const MAX_CHUNK_SIZE = 10000;
+  const MAX_CHUNK_SIZE = Number(process.env.GEMINI_MAX_TOKENS);
   let currentChunk = "";
   let lastIndex = 0;
   
@@ -48,7 +60,6 @@ function splitTextByPattern(text: string): string[] {
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i];
     const matchIndex = match.index!;
-    const matchText = match[0];
     
     // 현재 매치까지의 텍스트 추출
     const segment = text.substring(lastIndex, matchIndex);
@@ -98,13 +109,20 @@ async function processFiles() {
       console.log(`${chunks.length}개의 청크로 분할되었습니다.`);
       
       let translatedContent = '';
-      
-      // 각 청크 번역
-      for (let i = 0; i < chunks.length; i++) {
-        console.log(`청크 처리 중 (${i+1}/${chunks.length})`);
-        const translatedChunk = await translateJapaneseToKorean(chunks[i]);
-        await new Promise(resolve => setTimeout(resolve, 1000 * Math.max(5, Math.random() * 10)));
-        translatedContent += translatedChunk;
+     
+      const GEMINI_CHUNK_SIZE = Number(process.env.GEMINI_CHUNK_SIZE);
+      const GEMINI_DELAY_TIME = Number(process.env.GEMINI_DELAY_TIME);
+      // 3개의 청크씩 병렬 처리
+      for (let i = 0; i < chunks.length; i += GEMINI_CHUNK_SIZE) {
+        const currentChunks = chunks.slice(i, i + GEMINI_CHUNK_SIZE);
+        console.log(`청크 처리 중 (${i+1}-${Math.min(i+GEMINI_CHUNK_SIZE, chunks.length)}/${chunks.length})`);
+        
+        const translatedChunks = await Promise.all(
+          currentChunks.map(chunk => translateJapaneseToKorean(chunk))
+        );
+        
+        translatedContent += translatedChunks.join('');
+        await new Promise(resolve => setTimeout(resolve, GEMINI_DELAY_TIME));
       }
       
       // 번역된 내용 저장
