@@ -100,19 +100,11 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
       return text
     }
   } catch (error) {
-    console.error('번역 중 오류 발생:', error);
-    if (tryCount < 3) {
-      console.error('번역 중 오류 발생하여 재번역을 요청합니다.')
-      const errorLog = `[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}`;
-      fs.appendFileSync(logFilePath, errorLog);
-      await new Promise(resolve => setTimeout(resolve, geminiDelayTime * 2));
-      return await translateJapaneseToKorean(text, fileName, chunkIndex, tryCount + 1)
-    } else {
-      console.error('번역 중 오류 발생하여 원문을 유지합니다.')
+    console.error(error);
+    console.error('번역 중 오류 발생하여 원문을 유지합니다.')
       const errorLog = `[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}`;
       fs.appendFileSync(logFilePath, errorLog);
       return text
-    }
   }
 }
 
