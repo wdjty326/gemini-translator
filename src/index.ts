@@ -11,6 +11,7 @@ const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL as stri
 
 const extractPath = path.join(__dirname, '..', process.env.EXTRACT_PATH as string);
 const translatePath = path.join(__dirname, '..', process.env.TRANSLATE_PATH as string);
+const logPath = path.join(__dirname, '..', 'logs');
 
 if (!fs.existsSync(extractPath)) {
   fs.mkdirSync(extractPath, { recursive: true });
@@ -18,6 +19,10 @@ if (!fs.existsSync(extractPath)) {
 
 if (!fs.existsSync(translatePath)) {
   fs.mkdirSync(translatePath, { recursive: true });
+}
+
+if (!fs.existsSync(logPath)) {
+  fs.mkdirSync(logPath, { recursive: true });
 }
 
 const translateFiles = fs.readdirSync(translatePath);
@@ -28,8 +33,17 @@ const geminiChunkSize = Number(process.env.GEMINI_CHUNK_SIZE);
 
 
 // 번역 함수 정의
-async function translateJapaneseToKorean(text: string) {
+async function translateJapaneseToKorean(text: string, fileName: string, chunkIndex: number) {
+  const timestamp = new Date().toISOString();
+  const logFileName = `${fileName.replace(/\.[^/.]+$/, '')}_${timestamp.split('T')[0]}.log`;
+  const logFilePath = path.join(logPath, logFileName);
+
+  // 로그 시작
+  const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}\n원본 텍스트:\n${text}\n\n`;
+  fs.appendFileSync(logFilePath, startLog);
+
   const prompt = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 번역만 해주세요. "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴을 유지해주세요:\n\n${text}`;
+  
   const result = await model.generateContent({
     contents: [{
       role: "user",
@@ -40,10 +54,6 @@ async function translateJapaneseToKorean(text: string) {
     safetySettings: [
       {
         category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
         threshold: HarmBlockThreshold.BLOCK_NONE,
       },
       {
@@ -61,7 +71,13 @@ async function translateJapaneseToKorean(text: string) {
     ],
   });
   const response = await result.response;
-  return response.text();
+  const translatedText = response.text();
+
+  // 번역 결과 로그
+  const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}\n번역 결과:\n${translatedText}\n\n`;
+  fs.appendFileSync(logFilePath, endLog);
+
+  return translatedText;
 }
 
 // 텍스트 분할 함수 - 패턴 기반 분할
@@ -129,14 +145,14 @@ async function processFiles() {
       console.log(`${chunks.length}개의 청크로 분할되었습니다.`);
       
       let translatedContent = '';
-
+      
       // 3개의 청크씩 병렬 처리
       for (let i = 0; i < chunks.length; i += geminiChunkSize) {
         const currentChunks = chunks.slice(i, i + geminiChunkSize);
         console.log(`청크 처리 중 (${Math.min(i+geminiChunkSize, chunks.length)}/${chunks.length})`);
         
         const translatedChunks = await Promise.all(
-          currentChunks.map(chunk => translateJapaneseToKorean(chunk))
+          currentChunks.map((chunk, index) => translateJapaneseToKorean(chunk, file, i + index))
         );
         
         translatedContent += translatedChunks.join('');
@@ -146,7 +162,6 @@ async function processFiles() {
       // 번역된 내용 저장
       const outputPath = path.join(translatePath, file);
       fs.writeFileSync(outputPath, translatedContent, 'utf8');
-      
       console.log(`번역 완료: ${file}`);
     } catch (error) {
       console.error(`파일 처리 중 오류 발생 (${file}):`, error);

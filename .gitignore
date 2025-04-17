@@ -4,3 +4,7 @@ dist
 
 Extract
 Translate
+
+logs/*
+
+translate.zip
