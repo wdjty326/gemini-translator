@@ -5,6 +5,7 @@ import path from "path";
 
 dotenv.config();
 
+const timestamp = new Date().toISOString();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
 const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL as string });
@@ -33,51 +34,82 @@ const geminiChunkSize = Number(process.env.GEMINI_CHUNK_SIZE);
 
 
 // 번역 함수 정의
-async function translateJapaneseToKorean(text: string, fileName: string, chunkIndex: number) {
-  const timestamp = new Date().toISOString();
+async function translateJapaneseToKorean(text: string, fileName: string, chunkIndex: number, tryCount: number = 0) {
   const logFileName = `${fileName.replace(/\.[^/.]+$/, '')}_${timestamp.split('T')[0]}.log`;
   const logFilePath = path.join(logPath, logFileName);
 
+  const textLines = text.split('\n')
   // 로그 시작
-  const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}\n원본 텍스트:\n${text}\n\n`;
+  const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${textLines.length}\n\n`;
   fs.appendFileSync(logFilePath, startLog);
 
-  const prompt = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 번역만 해주세요. "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴을 유지해주세요:\n\n${text}`;
-  
-  const result = await model.generateContent({
-    contents: [{
-      role: "user",
-      parts: [{
-        text: prompt,
+  const prompt = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 번역만 해주세요. "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴을 유지해주세요. 줄바꿈도 원문과 동일하게 유지해주세요. 마지막 라인에 "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 를 추가하지마세요.:\n\n${text}`;
+  try {
+
+    const result = await model.generateContent({
+      contents: [{
+        role: "user",
+        parts: [{
+          text: prompt,
+        }],
       }],
-    }],
-    safetySettings: [
-      {
-        category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-      {
-        category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-        threshold: HarmBlockThreshold.BLOCK_NONE,
-      },
-    ],
-  });
-  const response = await result.response;
-  const translatedText = response.text();
-
-  // 번역 결과 로그
-  const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}\n번역 결과:\n${translatedText}\n\n`;
-  fs.appendFileSync(logFilePath, endLog);
-
-  return translatedText;
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+      ],
+    });
+    const response = await result.response;
+    const translatedText = response.text();
+  
+    const translatedLines = translatedText.split('\n')
+  
+    // 번역 결과 로그
+    const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${translatedLines.length}\n\n`;
+    fs.appendFileSync(logFilePath, endLog);
+  
+    if (translatedLines.length === textLines.length) {
+      return translatedText
+    } else if (tryCount < 3) {
+      console.error('비정상 번역 발생하여 재번역을 요청합니다.')
+      const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
+      fs.appendFileSync(logFilePath, errorLog);
+      await new Promise(resolve => setTimeout(resolve, geminiDelayTime));
+      return await translateJapaneseToKorean(text, fileName, chunkIndex, tryCount + 1)
+    } else {
+      console.error('비정상 번역 발생하여 원문을 유지합니다.')
+      const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
+      fs.appendFileSync(logFilePath, errorLog);
+      return text
+    }
+  } catch (error) {
+    console.error('번역 중 오류 발생:', error);
+    if (tryCount < 3) {
+      console.error('번역 중 오류 발생하여 재번역을 요청합니다.')
+      const errorLog = `[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}`;
+      fs.appendFileSync(logFilePath, errorLog);
+      await new Promise(resolve => setTimeout(resolve, geminiDelayTime * 2));
+      return await translateJapaneseToKorean(text, fileName, chunkIndex, tryCount + 1)
+    } else {
+      console.error('번역 중 오류 발생하여 원문을 유지합니다.')
+      const errorLog = `[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}`;
+      fs.appendFileSync(logFilePath, errorLog);
+      return text
+    }
+  }
 }
 
 // 텍스트 분할 함수 - 패턴 기반 분할
@@ -135,7 +167,11 @@ async function processFiles() {
   for (const file of extractFiles) {
     try {
       console.log(`파일 처리 중: ${file}`);
-      
+
+      const logFileName = `${file.replace(/\.[^/.]+$/, '')}_${timestamp.split('T')[0]}.log`;
+      const logFilePath = path.join(logPath, logFileName);
+
+      fs.writeFileSync(logFilePath, `[${timestamp}] 파일 처리 시작 - ${file}\n`);
       // 파일 읽기
       const filePath = path.join(extractPath, file);
       const content = fs.readFileSync(filePath, 'utf8');
