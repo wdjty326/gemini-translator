@@ -75,7 +75,10 @@ function splitTextByPattern(text: string): string[] {
   const MAX_CHUNK_SIZE = Number(process.env.GEMINI_MAX_TOKENS);
   let currentChunk = "";
   let lastIndex = 0;
+
+  console.log(matches[0], matches[1], matches[2])
   
+  return chunks
   // 패턴 매칭 위치를 기준으로 분할
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i];
@@ -109,6 +112,8 @@ function splitTextByPattern(text: string): string[] {
   } else if (currentChunk.length > 0) {
     chunks.push(currentChunk);
   }
+
+  console.log(matches)
   
   return chunks;
 }
@@ -136,7 +141,8 @@ async function processFiles() {
         console.log(`청크 처리 중 (${Math.min(i+geminiChunkSize, chunks.length)}/${chunks.length})`);
         
         const translatedChunks = await Promise.all(
-          currentChunks.map(chunk => translateJapaneseToKorean(chunk))
+          currentChunks.map(chunk => Promise.resolve(chunk))
+          // currentChunks.map(chunk => translateJapaneseToKorean(chunk))
         );
         
         translatedContent += translatedChunks.join('');
