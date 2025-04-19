@@ -12,7 +12,7 @@ export const convertLineNumberToText = (originalText: string, translatedText: st
         if (!line) return // 빈 라인이면 무시
 
         const text = line.substring(index + lineNumberSeparator.length)
-        originalLines[lineNumber] = text.replace(/\$\{(\d):(\d+)\}/g, (p0, p1, p2) => `${p1 === '0' ? '\\n' : '\\N'}[${p2}]`)
+        originalLines[lineNumber] = text.replace(/\$\{(n|N)(\d{1,})\}/g, (_, p1, p2) => `\\${p1}[${p2}]`)
     })
 
     return originalLines.join('\n')
@@ -21,6 +21,7 @@ export const convertLineNumberToText = (originalText: string, translatedText: st
 // 텍스트 분할 함수 - 라인 번호 기반 분할
 export const splitTextPatternByLineNumber = (text: string, size: number) => {
     const pattern = /(?:---(?: \d+ ---)|-----)/g;
+    const pattern2 = /^\\n|N\[(\d{1,})\]$/;
     const chunks: string[] = [];
     const lines = text.split('\n')
     let plainText = ''
@@ -34,8 +35,8 @@ export const splitTextPatternByLineNumber = (text: string, size: number) => {
         if (plainText.length + line.length > size && plainText.length > 0) {
             chunks.push(plainText.substring(0, plainText.length - 1));
             plainText = '';
-        } else if (!pattern.test(line) && line.length > 0) {
-            plainText += `${lineNumber}${lineNumberSeparator}${line.replace(/(\\n|\\N)\[(\d+)\]/g, (p0, p1, p2) => '${' + (p1 === '\\n' ? 0 : 1) + ':' + p2 + '}')}\n`;
+        } else if (!pattern.test(line) && !pattern2.test(line) && line.length > 0) {
+            plainText += `${lineNumber}${lineNumberSeparator}${line.replace(/\\(n|N)\[(\d+)\]/g, (_, p1, p2) => `\${${p1}${p2}}`)}\n`;
         }
     }
 
