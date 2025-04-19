@@ -43,9 +43,9 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
 
   const textLines = text.split('\n')
   // 로그 시작
-  const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${textLines.length}\n\n`;
+  const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${textLines.length}\n`;
   fs.appendFileSync(logFilePath, startLog);
-  const prompt = `${lineNumberPromptWithKR}\n\n${text}`
+  const prompt = `${lineNumberPromptWithKR}\n${text}`
   try {
 
     const result = await model.generateContent({
@@ -77,22 +77,21 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
     const response = await result.response;
     const translatedText = response.text();
 
-    const translatedLines = translatedText.split('\n')
-
+    const translatedLines = translatedText.split('\n').filter(line => line.length > 0)
     if (translatedLines.length === textLines.length) {
       // 번역 결과 로그
-      const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${translatedLines.length}\n\n\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
+      const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${translatedLines.length}\n원문:\n${text}\n번역 결과:\n${translatedText}\n`;
       fs.appendFileSync(logFilePath, endLog);
       return translatedText
     } else if (tryCount < 3) {
       console.error('비정상 번역 발생하여 재번역을 요청합니다.')
-      const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
+      const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n원문:\n${text}\n번역 결과:\n${translatedText}\n`;
       fs.appendFileSync(logFilePath, errorLog);
       await new Promise(resolve => setTimeout(resolve, geminiDelayTime));
       return await translateJapaneseToKorean(text, fileName, chunkIndex, tryCount + 1)
     } else {
       console.error('비정상 번역 발생하여 원문을 유지합니다.')
-      const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
+      const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n원문:\n${text}\n번역 결과:\n${translatedText}\n`;
       fs.appendFileSync(logFilePath, errorLog);
       return text
     }

@@ -32,15 +32,15 @@ export const splitTextPatternByLineNumber = (text: string, size: number) => {
         const lineNumber = i + 1
         const line = lines[i];
         if (plainText.length + line.length > size && plainText.length > 0) {
-            chunks.push(plainText);
+            chunks.push(plainText.substring(0, plainText.length - 1));
             plainText = '';
-        } else if (!pattern.test(line)) {
+        } else if (!pattern.test(line) && line.length > 0) {
             plainText += `${lineNumber}${lineNumberSeparator}${line.replace(/(\\n|\\N)\[(\d+)\]/g, (p0, p1, p2) => '${' + (p1 === '\\n' ? 0 : 1) + ':' + p2 + '}')}\n`;
         }
     }
 
     if (plainText.length > 0) {
-        chunks.push(plainText);
+        chunks.push(plainText.substring(0, plainText.length - 1));
     }
 
     return chunks;
