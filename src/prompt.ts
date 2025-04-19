@@ -2,5 +2,5 @@ export const defaultPrompt = `Please translate the following Japanese text to Ko
 export const defaultPromptWithKR = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 일본어만 번역 해주세요. "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴을 유지해주세요. 원문에 없는 내용을 추가 혹은 제거하지마세요. 줄바꿈도 원문과 동일하게 유지해주세요:\n\n`;
 
 export const lineNumberPrompt = `Please translate the following Japanese text to Korean. Maintain the original meaning and nuance while providing a natural Korean translation. Only translate the Japanese text without adding any explanations or additional content. Preserve the patterns "--- 101 ---", "--- 102 ---", or "-----". Do not add or remove any content that is not in the original text. Keep the line breaks exactly as they are in the original text:\n\n`;
-export const lineNumberPromptWithKR = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 일본어만 번역 해주세요. 원문에 없는 내용을 추가 혹은 제거하지마세요. 각 라인 앞에 라인번호와 구분자 ':'은 변경하지마세요. 원문에서 텍스트 '\\n'과 '\\N'은 그대로 유지해주세요. 줄바꿈도 원문과 동일하게 유지해주세요.`;
+export const lineNumberPromptWithKR = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 일본어만 번역 해주세요. 원문에 없는 내용을 추가 혹은 제거하지마세요. 각 라인 앞에 라인번호와 구분자 ':'은 변경하지마세요. 원문에서 텍스트 '\\n'과 '\\N'은 그대로 유지해주세요. 줄바꿈도 원문과 동일하게 유지해주세요. 원문의「 와 」 혹은 『 와 』 표시는 그대로 유지해주세요. 또한, 원문의 \\{ 와 \\} 표시는 그대로 유지해주세요.`;
 

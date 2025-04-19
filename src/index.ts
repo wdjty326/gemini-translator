@@ -1,16 +1,17 @@
-import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
+// import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
+import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-import { convertLineNumberToText, splitTextPatternByDefault, splitTextPatternByLineNumber } from "./util";
-import { defaultPromptWithKR, lineNumberPromptWithKR } from "./prompt";
+import { convertLineNumberToText, splitTextPatternByLineNumber } from "./util";
+import { lineNumberPromptWithKR } from "./prompt";
 
 dotenv.config();
 
 const timestamp = new Date().toISOString();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
-
-const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL as string });
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY as string
+});
 
 const extractPath = path.join(__dirname, '..', process.env.EXTRACT_PATH as string);
 const translatePath = path.join(__dirname, '..', process.env.TRANSLATE_PATH as string);
@@ -47,35 +48,36 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
   fs.appendFileSync(logFilePath, startLog);
   const prompt = `${lineNumberPromptWithKR}\n${text}`
   try {
-
-    const result = await model.generateContent({
-      contents: [{
-        role: "user",
-        parts: [{
-          text: prompt,
-        }],
-      }],
-      safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-      ],
+    const result = await ai.models.generateContent({
+      model: process.env.GEMINI_MODEL as string,
+      contents: prompt,
+      config: {
+        // thinkingConfig: {
+        //   thinkingBudget: 0, // 추론을 사용하지 않음
+        // },
+        temperature: 1,
+        safetySettings: [
+          {
+            category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+          {
+            category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+            threshold: HarmBlockThreshold.BLOCK_NONE,
+          },
+        ],
+      }
     });
-    const response = await result.response;
-    const translatedText = response.text();
+
+    const translatedText = result.text || '';
 
     const translatedLines = translatedText.split('\n').filter(line => line.length > 0)
     if (translatedLines.length === textLines.length) {
@@ -98,16 +100,16 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
   } catch (error) {
     console.error(`[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}. 청크 분할 재시도 중...`);
     const errorLog = `[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}. 청크 분할 재시도 시작.\n${error}\n`;
-    // fs.appendFileSync(logFilePath, errorLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리. 필요 시 로깅 방식 수정 필요.
+    fs.appendFileSync(logFilePath, errorLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리. 필요 시 로깅 방식 수정 필요.
 
     const lines = text.split('\n');
     const totalLines = lines.length;
     // 라인 수가 4개 미만일 경우, 더 이상 나눌 수 없으므로 원본 반환 (무한 재귀 방지)
     if (totalLines < 4) {
-        console.error(`[${new Date().toISOString()}] 라인 수가 4개 미만(${totalLines}줄)이라 청크 분할 재시도 불가 - 파일: ${fileName}, 청크: ${chunkIndex}. 원본 반환.`);
-        const errorLogLessLines = `[${new Date().toISOString()}] 라인 수가 4개 미만(${totalLines}줄)이라 청크 분할 재시도 불가 - 파일: ${fileName}, 청크: ${chunkIndex}. 원본 반환.\n`;
-        // fs.appendFileSync(logFilePath, errorLogLessLines); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
-        return text;
+      console.error(`[${new Date().toISOString()}] 라인 수가 4개 미만(${totalLines}줄)이라 청크 분할 재시도 불가 - 파일: ${fileName}, 청크: ${chunkIndex}. 원본 반환.`);
+      const errorLogLessLines = `[${new Date().toISOString()}] 라인 수가 4개 미만(${totalLines}줄)이라 청크 분할 재시도 불가 - 파일: ${fileName}, 청크: ${chunkIndex}. 원본 반환.\n`;
+      // fs.appendFileSync(logFilePath, errorLogLessLines); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+      return text;
     }
 
     const chunkSize = Math.ceil(totalLines / 4);
@@ -115,41 +117,41 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
     let retrySuccess = true;
 
     for (let i = 0; i < 4; i++) {
-        const startLine = i * chunkSize;
-        const endLine = Math.min((i + 1) * chunkSize, totalLines);
-        if (startLine >= endLine) continue;
+      const startLine = i * chunkSize;
+      const endLine = Math.min((i + 1) * chunkSize, totalLines);
+      if (startLine >= endLine) continue;
 
-        const chunkText = lines.slice(startLine, endLine).join('\n');
-        const chunkLogPrefix = `[${new Date().toISOString()}] 재번역 (청크 ${i + 1}/4) - 파일: ${fileName}, 원본 청크: ${chunkIndex}`;
+      const chunkText = lines.slice(startLine, endLine).join('\n');
+      const chunkLogPrefix = `[${new Date().toISOString()}] 재번역 (청크 ${i + 1}/4) - 파일: ${fileName}, 원본 청크: ${chunkIndex}`;
 
-        try {
-            console.log(`${chunkLogPrefix}: 재번역 시도 중...`);
-            await new Promise(resolve => setTimeout(resolve, geminiDelayTime)); // 재시도 딜레이
-            // 재번역 시도. 재귀 호출 대신 tryCount를 매우 높은 값으로 설정하여 추가 재귀 방지
-            const translatedChunk = await translateJapaneseToKorean(chunkText, fileName, chunkIndex, 99); // 99는 임의의 높은 값
-            translatedChunks.push(translatedChunk);
-            const successLog = `${chunkLogPrefix}: 재번역 성공.\\n`;
-            // fs.appendFileSync(logFilePath, successLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
-            console.log(`${chunkLogPrefix}: 재번역 성공.`);
-        } catch (retryError) {
-            console.error(`${chunkLogPrefix}: 재번역 실패. 원본 청크 유지.`);
-            const retryErrorLog = `${chunkLogPrefix}: 재번역 실패. 원본 청크 유지.\n${retryError}\n`;
-            // fs.appendFileSync(logFilePath, retryErrorLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
-            translatedChunks.push(chunkText); // 실패 시 원본 청크 텍스트 사용
-            retrySuccess = false; // 하나라도 실패하면 실패로 기록
-        }
+      try {
+        console.log(`${chunkLogPrefix}: 재번역 시도 중...`);
+        await new Promise(resolve => setTimeout(resolve, geminiDelayTime)); // 재시도 딜레이
+        // 재번역 시도. 재귀 호출 대신 tryCount를 매우 높은 값으로 설정하여 추가 재귀 방지
+        const translatedChunk = await translateJapaneseToKorean(chunkText, fileName, chunkIndex, 99); // 99는 임의의 높은 값
+        translatedChunks.push(translatedChunk);
+        const successLog = `${chunkLogPrefix}: 재번역 성공.\\n`;
+        // fs.appendFileSync(logFilePath, successLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+        console.log(`${chunkLogPrefix}: 재번역 성공.`);
+      } catch (retryError) {
+        console.error(`${chunkLogPrefix}: 재번역 실패. 원본 청크 유지.`);
+        const retryErrorLog = `${chunkLogPrefix}: 재번역 실패. 원본 청크 유지.\n${retryError}\n`;
+        // fs.appendFileSync(logFilePath, retryErrorLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+        translatedChunks.push(chunkText); // 실패 시 원본 청크 텍스트 사용
+        retrySuccess = false; // 하나라도 실패하면 실패로 기록
+      }
     }
 
     const finalResult = translatedChunks.join('\n');
 
     if (retrySuccess) {
-        console.log(`[${new Date().toISOString()}] 청크 분할 재번역 성공 - 파일: ${fileName}, 청크: ${chunkIndex}`);
-        const successLog = `[${new Date().toISOString()}] 청크 분할 재번역 성공 - 파일: ${fileName}, 청크: ${chunkIndex}.\n`;
-        // fs.appendFileSync(logFilePath, successLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+      console.log(`[${new Date().toISOString()}] 청크 분할 재번역 성공 - 파일: ${fileName}, 청크: ${chunkIndex}`);
+      const successLog = `[${new Date().toISOString()}] 청크 분할 재번역 성공 - 파일: ${fileName}, 청크: ${chunkIndex}.\n`;
+      // fs.appendFileSync(logFilePath, successLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
     } else {
-        console.error(`[${new Date().toISOString()}] 청크 분할 재번역 부분 실패 (일부 원본 유지) - 파일: ${fileName}, 청크: ${chunkIndex}`);
-        const partialFailLog = `[${new Date().toISOString()}] 청크 분할 재번역 부분 실패 (일부 원본 유지) - 파일: ${fileName}, 청크: ${chunkIndex}.\n`;
-        // fs.appendFileSync(logFilePath, partialFailLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+      console.error(`[${new Date().toISOString()}] 청크 분할 재번역 부분 실패 (일부 원본 유지) - 파일: ${fileName}, 청크: ${chunkIndex}`);
+      const partialFailLog = `[${new Date().toISOString()}] 청크 분할 재번역 부분 실패 (일부 원본 유지) - 파일: ${fileName}, 청크: ${chunkIndex}.\n`;
+      // fs.appendFileSync(logFilePath, partialFailLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
     }
 
     return finalResult; // 성공했든 부분 실패했든 조합된 결과 반환
