@@ -2,6 +2,8 @@ import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/ge
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
+import { convertLineNumberToText, splitTextPatternByDefault, splitTextPatternByLineNumber } from "./util";
+import { defaultPromptWithKR, lineNumberPromptWithKR } from "./prompt";
 
 dotenv.config();
 
@@ -32,6 +34,7 @@ const extractFiles = fs.readdirSync(extractPath).filter(file => !translateFiles.
 const geminiDelayTime = Number(process.env.GEMINI_DELAY_TIME);
 const geminiChunkSize = Number(process.env.GEMINI_CHUNK_SIZE);
 
+const geminiMaxTokens = Number(process.env.GEMINI_MAX_TOKENS);
 
 // 번역 함수 정의
 async function translateJapaneseToKorean(text: string, fileName: string, chunkIndex: number, tryCount: number = 0) {
@@ -42,8 +45,7 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
   // 로그 시작
   const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${textLines.length}\n\n`;
   fs.appendFileSync(logFilePath, startLog);
-  // const prompt = `일본어 텍스트를 한국어로 번역해주세요. 원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요. 설명이나 다른 내용 없이 오직 일본어만 번역 해주세요. "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴을 유지해주세요. 원문에 없는 내용을 추가 혹은 제거하지마세요. 줄바꿈도 원문과 동일하게 유지해주세요.:\n\n${text}`;
-  const prompt = `Please translate the following Japanese text to Korean. Maintain the original meaning and nuance while providing a natural Korean translation. Only translate the Japanese text without adding any explanations or additional content. Preserve the patterns "--- 101 ---", "--- 102 ---", or "-----". Do not add or remove any content that is not in the original text. Keep the line breaks exactly as they are in the original text:\n\n${text}`;
+  const prompt = `${lineNumberPromptWithKR}\n\n${text}`
   try {
 
     const result = await model.generateContent({
@@ -79,14 +81,9 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
 
     if (translatedLines.length === textLines.length) {
       // 번역 결과 로그
-      const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${translatedLines.length}\n\n`;
+      const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${translatedLines.length}\n\n\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
       fs.appendFileSync(logFilePath, endLog);
       return translatedText
-    } else if (translatedLines.length - 1 === textLines.length && translatedLines[translatedLines.length - 2] === "--- 101 ---") { // 간혈적으로 발생하는 오번역 패턴(마지막 라인에 "--- 101 ---" 추가)
-      const errorLog = `[${new Date().toISOString()}] 오번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
-      fs.appendFileSync(logFilePath, errorLog);
-      translatedLines.splice(translatedLines.length - 2, 1)
-      return translatedLines.join('\n')
     } else if (tryCount < 3) {
       console.error('비정상 번역 발생하여 재번역을 요청합니다.')
       const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n\n원문:\n${text}\n\n번역 결과:\n${translatedText}\n\n`;
@@ -100,61 +97,64 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
       return text
     }
   } catch (error) {
-    console.error(error);
-    console.error('번역 중 오류 발생하여 원문을 유지합니다.')
-      const errorLog = `[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}`;
-      fs.appendFileSync(logFilePath, errorLog);
-      return text
-  }
-}
+    console.error(`[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}. 청크 분할 재시도 중...`);
+    const errorLog = `[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}. 청크 분할 재시도 시작.\n${error}\n`;
+    // fs.appendFileSync(logFilePath, errorLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리. 필요 시 로깅 방식 수정 필요.
 
-// 텍스트 분할 함수 - 패턴 기반 분할
-function splitTextByPattern(text: string): string[] {
-  // "--- 101 ---" 또는 "--- 102 ---" 또는 "-----" 패턴으로 분할
-  const pattern = /(?:---(?: \d+ ---)|-----)/g;
-  const matches = [...text.matchAll(pattern)];
-  const chunks: string[] = [];
-
-  // 청크 크기 제한 (대략적인 크기)
-  const MAX_CHUNK_SIZE = Number(process.env.GEMINI_MAX_TOKENS);
-  let currentChunk = "";
-  let lastIndex = 0;
-
-  // 패턴 매칭 위치를 기준으로 분할
-  for (let i = 0; i < matches.length; i++) {
-    const match = matches[i];
-    const matchIndex = match.index!;
-
-    // 현재 매치까지의 텍스트 추출
-    const segment = text.substring(lastIndex, matchIndex);
-
-    // 청크 크기가 제한을 초과하면 새 청크 시작
-    if (currentChunk.length + segment.length > MAX_CHUNK_SIZE && currentChunk.length > 0) {
-      chunks.push(currentChunk);
-      currentChunk = segment;
-    } else {
-      currentChunk += segment;
+    const lines = text.split('\n');
+    const totalLines = lines.length;
+    // 라인 수가 4개 미만일 경우, 더 이상 나눌 수 없으므로 원본 반환 (무한 재귀 방지)
+    if (totalLines < 4) {
+        console.error(`[${new Date().toISOString()}] 라인 수가 4개 미만(${totalLines}줄)이라 청크 분할 재시도 불가 - 파일: ${fileName}, 청크: ${chunkIndex}. 원본 반환.`);
+        const errorLogLessLines = `[${new Date().toISOString()}] 라인 수가 4개 미만(${totalLines}줄)이라 청크 분할 재시도 불가 - 파일: ${fileName}, 청크: ${chunkIndex}. 원본 반환.\n`;
+        // fs.appendFileSync(logFilePath, errorLogLessLines); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+        return text;
     }
 
-    lastIndex = matchIndex
-  }
+    const chunkSize = Math.ceil(totalLines / 4);
+    let translatedChunks: string[] = [];
+    let retrySuccess = true;
 
-  // 마지막 청크 추가
-  if (lastIndex < text.length) {
-    const lastSegment = text.substring(lastIndex);
+    for (let i = 0; i < 4; i++) {
+        const startLine = i * chunkSize;
+        const endLine = Math.min((i + 1) * chunkSize, totalLines);
+        if (startLine >= endLine) continue;
 
-    if (currentChunk.length + lastSegment.length > MAX_CHUNK_SIZE) {
-      chunks.push(currentChunk);
-      chunks.push(lastSegment);
-    } else {
-      currentChunk += lastSegment;
-      chunks.push(currentChunk);
+        const chunkText = lines.slice(startLine, endLine).join('\n');
+        const chunkLogPrefix = `[${new Date().toISOString()}] 재번역 (청크 ${i + 1}/4) - 파일: ${fileName}, 원본 청크: ${chunkIndex}`;
+
+        try {
+            console.log(`${chunkLogPrefix}: 재번역 시도 중...`);
+            await new Promise(resolve => setTimeout(resolve, geminiDelayTime)); // 재시도 딜레이
+            // 재번역 시도. 재귀 호출 대신 tryCount를 매우 높은 값으로 설정하여 추가 재귀 방지
+            const translatedChunk = await translateJapaneseToKorean(chunkText, fileName, chunkIndex, 99); // 99는 임의의 높은 값
+            translatedChunks.push(translatedChunk);
+            const successLog = `${chunkLogPrefix}: 재번역 성공.\\n`;
+            // fs.appendFileSync(logFilePath, successLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+            console.log(`${chunkLogPrefix}: 재번역 성공.`);
+        } catch (retryError) {
+            console.error(`${chunkLogPrefix}: 재번역 실패. 원본 청크 유지.`);
+            const retryErrorLog = `${chunkLogPrefix}: 재번역 실패. 원본 청크 유지.\n${retryError}\n`;
+            // fs.appendFileSync(logFilePath, retryErrorLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+            translatedChunks.push(chunkText); // 실패 시 원본 청크 텍스트 사용
+            retrySuccess = false; // 하나라도 실패하면 실패로 기록
+        }
     }
-  } else if (currentChunk.length > 0) {
-    chunks.push(currentChunk);
-  }
 
-  return chunks;
+    const finalResult = translatedChunks.join('\n');
+
+    if (retrySuccess) {
+        console.log(`[${new Date().toISOString()}] 청크 분할 재번역 성공 - 파일: ${fileName}, 청크: ${chunkIndex}`);
+        const successLog = `[${new Date().toISOString()}] 청크 분할 재번역 성공 - 파일: ${fileName}, 청크: ${chunkIndex}.\n`;
+        // fs.appendFileSync(logFilePath, successLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+    } else {
+        console.error(`[${new Date().toISOString()}] 청크 분할 재번역 부분 실패 (일부 원본 유지) - 파일: ${fileName}, 청크: ${chunkIndex}`);
+        const partialFailLog = `[${new Date().toISOString()}] 청크 분할 재번역 부분 실패 (일부 원본 유지) - 파일: ${fileName}, 청크: ${chunkIndex}.\n`;
+        // fs.appendFileSync(logFilePath, partialFailLog); // logFilePath 변수가 이 스코프에 없으므로 주석 처리.
+    }
+
+    return finalResult; // 성공했든 부분 실패했든 조합된 결과 반환
+  }
 }
 
 // 파일 처리 함수
@@ -173,7 +173,7 @@ async function processFiles() {
       const content = fs.readFileSync(filePath, 'utf8');
 
       // 패턴 기반으로 텍스트 분할
-      const chunks = splitTextByPattern(content);
+      const chunks = splitTextPatternByLineNumber(content, geminiMaxTokens);
       console.log(`${chunks.length}개의 청크로 분할되었습니다.`);
 
       let translatedContent = '';
@@ -190,6 +190,9 @@ async function processFiles() {
         translatedContent += translatedChunks.join('');
         await new Promise(resolve => setTimeout(resolve, geminiDelayTime));
       }
+
+      // 라인 번호 기반으로 번역된 내용 수정
+      translatedContent = convertLineNumberToText(content, translatedContent);
 
       // 번역된 내용 저장
       const outputPath = path.join(translatePath, file);
