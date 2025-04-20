@@ -7,7 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "chunk": "node dist/chunk.js",
-    "translate": "node dist/translator.js"
+    "translate": "node dist/translator.js",
+    "join": "node dist/join.js"
   },
   "keywords": [],
   "author": "",

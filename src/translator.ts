@@ -38,6 +38,7 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
     // 로그 시작
     const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${textLines.length}\n`;
     fs.appendFileSync(logFilePath, startLog);
+    console.debug(`[${timestamp}] 번역 시작 - 파일: ${fileName}`);
     const prompt = `${lineNumberPromptWithKR}\n${text}`
     try {
         const result = await ai.models.generateContent({
@@ -76,20 +77,24 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
             // 번역 결과 로그
             const endLog = `[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${translatedLines.length}\n원문:\n${text}\n번역 결과:\n${translatedText}\n`;
             fs.appendFileSync(logFilePath, endLog);
+            console.debug(`[${new Date().toISOString()}] 번역 완료 - 파일: ${fileName}`);
             return translatedText
         } else if (translatedText.length === 0) {
             throw new Error('번역요청에 실패하여 청크를 재분리합니다.')
-        } else if (tryCount < 3) {
+        } else if (tryCount < 1) {
             console.error('비정상 번역 발생하여 재번역을 요청합니다.')
             const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n원문:\n${text}\n번역 결과:\n${translatedText}\n`;
             fs.appendFileSync(logFilePath, errorLog);
+            console.debug(errorLog);
             await new Promise(resolve => setTimeout(resolve, geminiDelayTime));
             return await translateJapaneseToKorean(text, fileName, chunkIndex, tryCount + 1)
         } else {
-            console.error('비정상 번역 발생하여 원문을 유지합니다.')
-            const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n원문:\n${text}\n번역 결과:\n${translatedText}\n`;
-            fs.appendFileSync(logFilePath, errorLog);
-            return text
+            throw new Error('번역요청에 실패하여 청크를 재분리합니다.')
+            // console.error('비정상 번역 발생하여 원문을 유지합니다.')
+            // const errorLog = `[${new Date().toISOString()}] 비정상 번역 발생 - 파일: ${fileName}, 청크: ${chunkIndex}, 원문 라인: ${textLines.length}, 번역 라인: ${translatedLines.length}\n원문:\n${text}\n번역 결과:\n${translatedText}\n`;
+            // fs.appendFileSync(logFilePath, errorLog);
+            // console.debug(errorLog);
+            // return text
         }
     } catch (error) {
         console.error(`[${new Date().toISOString()}] 번역 중 오류 발생 - 파일: ${fileName}, 청크: ${chunkIndex}. 청크 분할 재시도 중...`);
@@ -145,7 +150,7 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
 async function processFiles() {
     console.log(translateDirs);
     for (const dir of translateDirs) {
-        const files = fs.readdirSync(path.join(translatePath, dir)).filter(file => !file.includes('_complate_'));
+        const files = fs.readdirSync(path.join(translatePath, dir)).filter(file => !file.includes('_complate_') && !file.includes('_failed_'));
         console.log(`번역 처리 중: ${dir} ${files.length}개의 파일`);
         for (let i = 0; i < files.length; i += geminiChunkSize) {
             const currentFiles = files.slice(i, i + geminiChunkSize);
@@ -164,7 +169,12 @@ async function processFiles() {
             );
 
             for (let i = 0; i < translatedChunks.length; i++) {
-                fs.writeFileSync(path.join(translatePath, dir, `_complate_${currentFiles[i]}`), translatedChunks[i], 'utf8');
+                if (/[ぁ-ゔ]+|[ァ-ヴー]+[々〆〤]/g.test(translatedChunks[i])) {
+                    console.error(`${currentFiles[i]} 청크 번역 결과 오류 발생 - \n번역 결과:\n${`_failed_${currentFiles[i]}`}`);
+                    fs.writeFileSync(path.join(translatePath, dir, `_failed_${currentFiles[i]}`), translatedChunks[i], 'utf8');
+                } else {
+                    fs.writeFileSync(path.join(translatePath, dir, `_complate_${currentFiles[i]}`), translatedChunks[i], 'utf8');
+                }
             }
         }
     }
