@@ -25,6 +25,7 @@ pnpm build
 # .env
 EXTRACT_PATH=./extract
 TRANSLATE_PATH=./translate
+RESULT_PATH=./result
 
 # Gemini API Key
 GEMINI_API_KEY=본인이사용하는키

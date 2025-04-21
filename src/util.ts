@@ -20,8 +20,6 @@ export const convertLineNumberToText = (originalText: string, translatedText: st
 
 // 텍스트 분할 함수 - 라인 번호 기반 분할
 export const splitTextPatternByLineNumber = (text: string, size: number) => {
-    const pattern = /(?:---(?: \d+ ---)|-----)/g;
-    const pattern2 = /^\\n|N\[(\d{1,})\]$/;
     const chunks: string[] = [];
     const lines = text.split('\n')
     let plainText = ''
@@ -35,7 +33,7 @@ export const splitTextPatternByLineNumber = (text: string, size: number) => {
         if (plainText.length + line.length > size && plainText.length > 0) {
             chunks.push(plainText.substring(0, plainText.length - 1));
             plainText = '';
-        } else if (!pattern.test(line) && !pattern2.test(line) && line.length > 0) {
+        } else if (!/(?:---(?: \d+ ---)|-----)/.test(line) && !/^\\n|N\[(\d{1,})\]$/.test(line) && line.length > 0) {
             plainText += `${lineNumber}${lineNumberSeparator}${line.replace(/\\(n|N)\[(\d+)\]/g, (_, p1, p2) => `\${${p1}${p2}}`)}\n`;
         }
     }

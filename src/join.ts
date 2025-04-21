@@ -42,6 +42,19 @@ async function processFiles() {
     try {
       console.log(`파일 처리 중: ${file}`);
       let originalText = fs.readFileSync(path.join(extractPath, file), 'utf8');
+
+      const failedFiles = fs.readdirSync(path.join(translatePath, file)).filter(file => file.includes('_failed_'));
+      console.log(`[${timestamp}] 파일 처리 시작 - ${file}\n`)
+
+      for (const complateFile of failedFiles) {
+        console.log(`[${timestamp}] 파일 처리 중 - ${complateFile}`);
+        const complateText = fs.readFileSync(path.join(translatePath, file, complateFile), 'utf8');
+        originalText = convertLineNumberToText(originalText, complateText);
+      }
+
+      console.log(`[${timestamp}] 파일 처리 완료 - ${file}`);
+      fs.writeFileSync(path.join(resultPath, file), originalText, 'utf8');
+
       const complateFiles = fs.readdirSync(path.join(translatePath, file)).filter(file => file.includes('_complate_'));
       console.log(`[${timestamp}] 파일 처리 시작 - ${file}\n`)
 

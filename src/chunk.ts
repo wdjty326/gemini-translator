@@ -54,15 +54,15 @@ async function processFiles() {
       console.log(`${chunks.length}개의 청크로 분할되었습니다.`);
 
       // 3개의 청크씩 병렬 처리
-      for (let i = 0; i < chunks.length; i += geminiChunkSize) {
-        const currentChunks = chunks.slice(i, i + geminiChunkSize);
-        console.log(`청크 처리 중 (${Math.min(i + geminiChunkSize, chunks.length)}/${chunks.length})`);
+      for (let i = 0; i < chunks.length; i += 1) {
+        const currentChunks = chunks[i]
+        console.log(`청크 처리 중 (${Math.min(i + 1, chunks.length)}/${chunks.length})`);
 
-        const translatedChunks = await Promise.all(
-          currentChunks.map((chunk) => Promise.resolve(chunk))
-        );
+        // const translatedChunks = await Promise.all(
+        //   currentChunks.map((chunk) => Promise.resolve(chunk))
+        // );
 
-        fs.writeFileSync(path.join(translatePath, file, `${i}.txt`), translatedChunks.join(''), 'utf8');
+        fs.writeFileSync(path.join(translatePath, file, `${i}.txt`), currentChunks, 'utf8');
       }
 
       console.log(`청크 분리 완료: ${file}`);

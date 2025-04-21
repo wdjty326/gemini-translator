@@ -45,9 +45,9 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
             model: process.env.GEMINI_MODEL as string,
             contents: prompt,
             config: {
-                thinkingConfig: {
-                    thinkingBudget: 0, // 추론을 사용하지 않음
-                },
+                // thinkingConfig: {
+                //     thinkingBudget: 0, // 추론을 사용하지 않음
+                // },
                 temperature: 1,
                 safetySettings: [
                     {
