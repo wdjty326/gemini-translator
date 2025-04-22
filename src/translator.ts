@@ -1,9 +1,7 @@
-// import { GoogleGenerativeAI, HarmBlockThreshold, HarmCategory } from "@google/generative-ai";
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
 import path from "path";
-import { lineNumberPromptWithKR } from "./prompt";
 
 dotenv.config();
 
@@ -28,6 +26,16 @@ const translateDirs = fs.readdirSync(translatePath);
 const geminiDelayTime = Number(process.env.GEMINI_DELAY_TIME);
 const geminiChunkSize = Number(process.env.GEMINI_CHUNK_SIZE);
 
+const geminiPrompt = process.env.GEMINI_PROMPT || `일본어 텍스트를 한국어로 번역해주세요.
+원문의 의미와 뉘앙스를 유지하면서 자연스러운 한국어로 번역해주세요.
+설명이나 다른 내용 없이 오직 일본어만 번역 해주세요.
+원문에 없는 내용을 추가 혹은 제거하지마세요.
+각 라인 앞에 라인번호와 구분자 ':'은 변경하지마세요.
+원문에서 텍스트 '\\n'과 '\\N'은 그대로 유지해주세요.
+줄바꿈도 원문과 동일하게 유지해주세요.
+원문의「 와 」 혹은 『 와 』 표시는 그대로 유지해주세요.
+또한, 원문의 \\{ 와 \\} 표시는 그대로 유지해주세요.`;
+
 
 // 번역 함수 정의
 async function translateJapaneseToKorean(text: string, fileName: string, chunkIndex: number, tryCount: number = 0) {
@@ -39,7 +47,7 @@ async function translateJapaneseToKorean(text: string, fileName: string, chunkIn
     const startLog = `[${timestamp}] 번역 시작 - 파일: ${fileName}, 청크: ${chunkIndex}, 라인: ${textLines.length}\n`;
     fs.appendFileSync(logFilePath, startLog);
     console.debug(`[${timestamp}] 번역 시작 - 파일: ${fileName}`);
-    const prompt = `${lineNumberPromptWithKR}\n${text}`
+    const prompt = `${geminiPrompt}\n${text}`
     try {
         const result = await ai.models.generateContent({
             model: process.env.GEMINI_MODEL as string,

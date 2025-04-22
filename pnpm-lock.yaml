@@ -11,9 +11,6 @@ importers:
       '@google/genai':
         specifier: ^0.9.0
         version: 0.9.0
-      '@google/generative-ai':
-        specifier: ^0.24.0
-        version: 0.24.0
       dotenv:
         specifier: ^16.5.0
         version: 16.5.0
@@ -29,10 +26,6 @@ packages:
 
   '@google/genai@0.9.0':
     resolution: {integrity: sha512-FD2RizYGInsvfjeaN6O+wQGpRnGVglS1XWrGQr8K7D04AfMmvPodDSw94U9KyFtsVLzWH9kmlPyFM+G4jbmkqg==}
-    engines: {node: '>=18.0.0'}
-
-  '@google/generative-ai@0.24.0':
-    resolution: {integrity: sha512-fnEITCGEB7NdX0BhoYZ/cq/7WPZ1QS5IzJJfC3Tg/OwkvBetMiVJciyaan297OvE4B9Jg1xvo0zIazX/9sGu1Q==}
     engines: {node: '>=18.0.0'}
 
   '@types/node@22.14.1':
@@ -176,8 +169,6 @@ snapshots:
       - encoding
       - supports-color
       - utf-8-validate
-
-  '@google/generative-ai@0.24.0': {}
 
   '@types/node@22.14.1':
     dependencies:
